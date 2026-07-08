@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Builds
+.next/
+dist/
+*.tsbuildinfo
+
+# Runtime data (database, media, secrets stay local)
+data/
+*.pt
+worker/Ultralytics/
+tmp-test/camera.mp4
+tmp-test/person.jpg
+
+# Env
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+*.log

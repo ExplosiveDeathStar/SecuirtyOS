@@ -1,0 +1,13 @@
+{
+  "name": "securityos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SecurityOS — the AI intelligence layer for physical security. Phase 1: AI person detection + event timeline.",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:worker": "worker/.venv/bin/python -m worker.main",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build"
+  }
+}
