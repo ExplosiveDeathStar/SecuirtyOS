@@ -24,6 +24,7 @@ class CameraConfig:
     """A camera as configured by the user (credentials already decrypted)."""
 
     id: str
+    site_id: str
     name: str
     location: str
     rtsp_url: str
@@ -39,6 +40,7 @@ class StorageConfig:
     media_dir: str
     snapshots_dir: str
     clips_dir: str
+    faces_dir: str
 
 
 @dataclass
@@ -55,6 +57,7 @@ def fetch_state() -> BackendState:
     cameras = [
         CameraConfig(
             id=c["id"],
+            site_id=c["siteId"],
             name=c["name"],
             location=c.get("location", ""),
             rtsp_url=c["rtspUrl"],
@@ -68,6 +71,7 @@ def fetch_state() -> BackendState:
         media_dir=body["storage"]["mediaDir"],
         snapshots_dir=body["storage"]["snapshotsDir"],
         clips_dir=body["storage"]["clipsDir"],
+        faces_dir=body["storage"]["facesDir"],
     )
     return BackendState(cameras=cameras, storage=storage)
 
@@ -127,3 +131,77 @@ def close_event(event_id: str, ended_at: str, duration_s: float, confidence: flo
         )
     except requests.RequestException:
         log.exception("Failed to close event %s", event_id)
+
+
+def report_location_suggestion(camera_id: str, location: str) -> None:
+    """Offer an auto-detected location label; backend applies it only if the
+    user has not set one themselves."""
+    try:
+        requests.post(
+            f"{config.BACKEND_URL}/internal/cameras/{camera_id}/suggested-location",
+            json={"location": location},
+            timeout=_TIMEOUT,
+        )
+    except requests.RequestException:
+        log.warning("Failed to report location suggestion for camera %s", camera_id)
+
+
+# -- person identity ----------------------------------------------------------
+
+def fetch_persons(site_id: str) -> list[dict] | None:
+    """Pull the persons registry (ids + face embeddings) for matching."""
+    try:
+        res = requests.get(
+            f"{config.BACKEND_URL}/internal/persons",
+            params={"siteId": site_id},
+            timeout=_TIMEOUT,
+        )
+        res.raise_for_status()
+        return res.json()["persons"]
+    except requests.RequestException:
+        log.warning("Failed to fetch persons registry")
+        return None
+
+
+def create_person(site_id: str, embedding: list[float], face_path: str | None,
+                  sharpness: float = 0.0) -> dict | None:
+    """Enroll a new (unlabeled) person. Returns the created person record."""
+    try:
+        res = requests.post(
+            f"{config.BACKEND_URL}/internal/persons",
+            json={"siteId": site_id, "embedding": embedding, "facePath": face_path,
+                  "sharpness": sharpness},
+            timeout=_TIMEOUT,
+        )
+        res.raise_for_status()
+        return res.json()
+    except requests.RequestException:
+        log.exception("Failed to create person")
+        return None
+
+
+def add_person_embedding(site_id: str, person_id: str, embedding: list[float],
+                         face_path: str | None = None,
+                         sharpness: float = 0.0) -> None:
+    """Persist an extra face embedding (and its photo) for a known person."""
+    try:
+        requests.post(
+            f"{config.BACKEND_URL}/internal/persons/{person_id}/embeddings",
+            json={"siteId": site_id, "embedding": embedding, "facePath": face_path,
+                  "sharpness": sharpness},
+            timeout=_TIMEOUT,
+        )
+    except requests.RequestException:
+        log.warning("Failed to add embedding for person %s", person_id)
+
+
+def add_event_persons(event_id: str, person_ids: list[str]) -> None:
+    """Link identified persons to an open event (also counts a visit)."""
+    try:
+        requests.post(
+            f"{config.BACKEND_URL}/internal/events/{event_id}/persons",
+            json={"personIds": person_ids},
+            timeout=_TIMEOUT,
+        )
+    except requests.RequestException:
+        log.exception("Failed to attach persons to event %s", event_id)

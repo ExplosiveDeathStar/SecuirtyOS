@@ -12,6 +12,7 @@ dist/
 # Runtime data (database, media, secrets stay local)
 data/
 *.pt
+*.onnx
 worker/Ultralytics/
 tmp-test/camera.mp4
 tmp-test/person.jpg
@@ -19,6 +20,9 @@ tmp-test/person.jpg
 # Env
 .env
 .env.local
+
+# Neolink bridge config (contains camera credentials)
+tools/neolink/neolink.toml
 
 # OS / editor
 .DS_Store

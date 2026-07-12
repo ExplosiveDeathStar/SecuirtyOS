@@ -44,6 +44,108 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_events_camera ON events(camera_id, started_at DESC);
   CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
   `,
+
+  // 002 — person identity (face recognition) + camera sensitivity
+  `
+  CREATE TABLE IF NOT EXISTS persons (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    safe          INTEGER NOT NULL DEFAULT 0,   -- user marked as trusted
+    labeled       INTEGER NOT NULL DEFAULT 0,   -- user gave them a real name
+    embeddings    TEXT NOT NULL DEFAULT '[]',   -- JSON list of face embeddings
+    face_path     TEXT,                          -- thumbnail in media/faces/
+    first_seen_at TEXT NOT NULL,
+    last_seen_at  TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS event_persons (
+    event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    person_id TEXT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, person_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_event_persons_person ON event_persons(person_id);
+
+  ALTER TABLE cameras ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'medium';
+  `,
+
+  // 003 — face photo gallery per person (thumbnail is picked from these)
+  `
+  ALTER TABLE persons ADD COLUMN face_paths TEXT NOT NULL DEFAULT '[]';
+  UPDATE persons
+  SET face_paths = json_array(face_path)
+  WHERE face_path IS NOT NULL AND face_paths = '[]';
+  `,
+
+  // 004 — auto-upgrade thumbnails to the sharpest captured photo
+  `
+  ALTER TABLE persons ADD COLUMN thumb_sharpness REAL NOT NULL DEFAULT 0;
+  ALTER TABLE persons ADD COLUMN thumb_user_set INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  // 005 — commercial auth: users, selected subscription plan, and sessions
+  `
+  CREATE TABLE IF NOT EXISTS users (
+    id             TEXT PRIMARY KEY,
+    email          TEXT NOT NULL UNIQUE,
+    password_hash  TEXT NOT NULL,
+    plan           TEXT NOT NULL CHECK (plan IN ('monthly', 'yearly')),
+    billing_status TEXT NOT NULL DEFAULT 'trialing',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+  `,
+
+  // 006 — roles and Stripe subscription state
+  `
+  ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'customer';
+  ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;
+  ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT;
+  ALTER TABLE users ADD COLUMN current_period_end TEXT;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_stripe_customer
+    ON users(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+
+  UPDATE users
+  SET role = 'owner', billing_status = 'active'
+  WHERE lower(email) = 'ryan@loancater.com';
+  `,
+
+  // 007 — tenant/site isolation for commercial multi-customer use
+  `
+  CREATE TABLE IF NOT EXISTS sites (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_by TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  INSERT OR IGNORE INTO sites (id, name, created_by, created_at)
+  VALUES ('legacy-site', 'Ryan Home', NULL, datetime('now'));
+
+  ALTER TABLE users ADD COLUMN site_id TEXT;
+  ALTER TABLE cameras ADD COLUMN site_id TEXT;
+  ALTER TABLE persons ADD COLUMN site_id TEXT;
+
+  UPDATE users SET site_id = 'legacy-site' WHERE site_id IS NULL;
+  UPDATE cameras SET site_id = 'legacy-site' WHERE site_id IS NULL;
+  UPDATE persons SET site_id = 'legacy-site' WHERE site_id IS NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_users_site ON users(site_id);
+  CREATE INDEX IF NOT EXISTS idx_cameras_site ON cameras(site_id);
+  CREATE INDEX IF NOT EXISTS idx_persons_site ON persons(site_id);
+  `,
 ];
 
 /** Open (and migrate) the database. Safe to call repeatedly. */

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import type { User } from "@/lib/types";
 
 const NAV = [
   {
@@ -23,6 +25,17 @@ const NAV = [
     ),
   },
   {
+    href: "/people",
+    label: "People",
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+      />
+    ),
+  },
+  {
     href: "/cameras",
     label: "Cameras",
     icon: (
@@ -36,8 +49,20 @@ const NAV = [
 ];
 
 /** App navigation. Future modules (Search, People, Vehicles, ...) add entries here. */
-export function Sidebar() {
+export function Sidebar({ user }: { user: User }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function logout() {
+    await api.auth.logout();
+    router.replace("/login");
+  }
+
+  async function manageBilling() {
+    const { url } = await api.billing.portal();
+    window.location.assign(url);
+  }
+
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-edge bg-panel">
       <div className="flex items-center gap-2.5 px-6 py-6">
@@ -79,6 +104,22 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto px-6 py-5 text-[11px] leading-relaxed text-zinc-600">
+        <div className="mb-3 rounded-lg border border-edge bg-panel-2 px-3 py-2">
+          <div className="truncate text-zinc-400">{user.email}</div>
+          <div className="text-zinc-600">
+            {user.role === "owner"
+              ? "Platform owner · full access"
+              : `${user.plan === "yearly" ? "$100/year" : "$10/month"} · ${user.billingStatus}`}
+          </div>
+          {user.role !== "owner" && (
+            <button onClick={() => void manageBilling()} className="mt-2 text-zinc-500 hover:text-accent">
+              Manage billing
+            </button>
+          )}
+          <button onClick={() => void logout()} className="mt-2 text-zinc-500 hover:text-accent">
+            Log out
+          </button>
+        </div>
         All processing is local.
         <br />
         No video leaves this machine.

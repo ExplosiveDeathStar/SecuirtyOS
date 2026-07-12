@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop all SecurityOS services. Data, events, and clips are untouched.
+# Stop SecurityOS + Neolink bridge. Data, events, and clips are untouched.
 set -uo pipefail
 
 stop_port() {
@@ -18,4 +18,5 @@ echo "Stopping SecurityOS..."
 stop_port 3000 "frontend"
 stop_port 8001 "worker"
 stop_port 4000 "backend"
-echo "Done. Start again with scripts/start.sh"
+stop_port 8554 "neolink"
+echo "Done. Start again with scripts/start-all.sh"

@@ -52,13 +52,42 @@ export function EventModal({ event, onClose }: { event: SecurityEvent; onClose: 
         </div>
 
         <div className="grid grid-cols-3 divide-x divide-edge border-t border-edge">
-          <Fact label="Detection" value={eventTypeLabel(event.type)} />
+          <Fact
+            label="Detection"
+            value={
+              event.persons.length > 0
+                ? event.persons.map((p) => p.name).join(", ")
+                : eventTypeLabel(event.type)
+            }
+          />
           <Fact
             label="Duration"
             value={event.status === "active" ? "In progress" : formatDuration(event.durationS)}
           />
           <Fact label="Confidence" value={formatConfidence(event.confidence)} />
         </div>
+
+        {event.persons.length > 0 && (
+          <div className="border-t border-edge px-5 py-3.5">
+            <div className="text-[11px] uppercase tracking-wider text-zinc-500">Sighting frequency</div>
+            <div className="mt-1 grid gap-1">
+              {event.persons.map((p) => (
+                <div key={p.id} className="text-xs text-zinc-400">
+                  <span className="font-medium text-zinc-200">{p.name}</span>
+                  {p.safe && (
+                    <span className="ml-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 px-1 text-[10px] font-semibold text-emerald-300">
+                      SAFE
+                    </span>
+                  )}
+                  <span className="tabular-nums">
+                    {" "}· {p.visitsLast7d} sighting{p.visitsLast7d === 1 ? "" : "s"} in the last 7 days ·{" "}
+                    {p.visitCount} all time
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

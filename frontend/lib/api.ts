@@ -5,7 +5,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Camera, DashboardData, SecurityEvent, TestResult } from "./types";
+import type { Camera, DashboardData, Person, SecurityEvent, SubscriptionPlan, TestResult, User } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -21,6 +21,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  auth: {
+    me: () => request<{ user: User | null }>("/api/auth/me"),
+    signup: (input: { email: string; password: string; plan: SubscriptionPlan }) =>
+      request<{ user: User }>("/api/auth/signup", { method: "POST", body: JSON.stringify(input) }),
+    login: (input: { email: string; password: string }) =>
+      request<{ user: User }>("/api/auth/login", { method: "POST", body: JSON.stringify(input) }),
+    logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+  },
+  billing: {
+    status: () => request<{ configured: boolean; user: User }>("/api/billing/status"),
+    checkout: (plan: SubscriptionPlan) =>
+      request<{ url: string }>("/api/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({ plan }),
+      }),
+    portal: () => request<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  },
   dashboard: () => request<DashboardData>("/api/dashboard"),
   cameras: {
     list: () => request<Camera[]>("/api/cameras"),
@@ -32,11 +49,26 @@ export const api = {
     test: (input: { rtspUrl: string; username?: string; password?: string }) =>
       request<TestResult>("/api/cameras/test", { method: "POST", body: JSON.stringify(input) }),
     testSaved: (id: string) => request<TestResult>(`/api/cameras/${id}/test`, { method: "POST" }),
+    suggestLocation: (id: string) =>
+      request<{ location: string | null; message: string }>(`/api/cameras/${id}/suggest-location`, {
+        method: "POST",
+      }),
     previewUrl: (id: string) => `/api/cameras/${id}/preview`,
   },
   events: {
     list: (params: Record<string, string> = {}) =>
       request<SecurityEvent[]>(`/api/events?${new URLSearchParams(params)}`),
+  },
+  persons: {
+    list: () => request<Person[]>("/api/persons"),
+    update: (id: string, input: { name?: string; safe?: boolean; faceUrl?: string }) =>
+      request<Person>(`/api/persons/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+    merge: (targetId: string, sourceId: string) =>
+      request<Person>(`/api/persons/${targetId}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ sourceId }),
+      }),
+    delete: (id: string) => request<void>(`/api/persons/${id}`, { method: "DELETE" }),
   },
 };
 

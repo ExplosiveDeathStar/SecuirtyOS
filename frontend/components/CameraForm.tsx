@@ -18,13 +18,50 @@ export function CameraForm({ camera, onSaved, onClose }: Props) {
   const [username, setUsername] = useState(camera?.username ?? "");
   const [password, setPassword] = useState("");
   const [enabled, setEnabled] = useState(camera?.enabled ?? true);
-
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
+  const [brand, setBrand] = useState("generic");
+  const [cameraHost, setCameraHost] = useState("");
+  const [bridgeName, setBridgeName] = useState("");
 
   const passwordUnchanged = camera !== null && camera.hasPassword && password === "";
+
+  function applyBrandPreset() {
+    const host = cameraHost.trim();
+    if (brand === "neolink") {
+      const streamName = bridgeName.trim();
+      if (streamName) setRtspUrl(`rtsp://127.0.0.1:8554/${streamName}/main`);
+      return;
+    }
+    if (!host) return;
+    const paths: Record<string, string> = {
+      reolink: "/h264Preview_01_main",
+      amcrest: "/cam/realmonitor?channel=1&subtype=0",
+      dahua: "/cam/realmonitor?channel=1&subtype=0",
+      hikvision: "/Streaming/Channels/101",
+    };
+    const path = paths[brand];
+    if (path) setRtspUrl(`rtsp://${host}:554${path}`);
+  }
+
+  async function handleSuggestLocation() {
+    if (!camera) return;
+    setSuggesting(true);
+    setSuggestNote(null);
+    try {
+      const result = await api.cameras.suggestLocation(camera.id);
+      if (result.location) setLocation(result.location);
+      else setSuggestNote(result.message);
+    } catch {
+      setSuggestNote("Could not reach the detection worker");
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function handleTest() {
     setTesting(true);
@@ -77,12 +114,84 @@ export function CameraForm({ camera, onSaved, onClose }: Props) {
         </div>
 
         <div className="grid gap-4 px-6 py-5">
+          {!camera && (
+            <div className="rounded-xl border border-edge bg-panel-2 p-4">
+              <div className="text-xs font-semibold text-zinc-300">Quick camera setup</div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Field label="Camera brand">
+                  <select value={brand} onChange={(e) => setBrand(e.target.value)} className={inputCls}>
+                    <option value="generic">Generic / paste RTSP URL</option>
+                    <option value="reolink">Reolink with RTSP</option>
+                    <option value="neolink">Reolink through Neolink bridge</option>
+                    <option value="amcrest">Amcrest</option>
+                    <option value="dahua">Dahua</option>
+                    <option value="hikvision">Hikvision</option>
+                    <option value="unifi">UniFi Protect (paste URL)</option>
+                  </select>
+                </Field>
+                {brand === "neolink" ? (
+                  <Field label="Neolink camera name">
+                    <input
+                      value={bridgeName}
+                      onChange={(e) => setBridgeName(e.target.value)}
+                      placeholder="frontdoor"
+                      className={inputCls}
+                    />
+                  </Field>
+                ) : (
+                  <Field label="Camera IP / hostname">
+                    <input
+                      value={cameraHost}
+                      onChange={(e) => setCameraHost(e.target.value)}
+                      placeholder="192.168.1.20"
+                      className={inputCls}
+                    />
+                  </Field>
+                )}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-4">
+                <p className="text-[11px] leading-4 text-zinc-500">
+                  {brand === "neolink"
+                    ? "Use this for Reolink cameras that do not expose RTSP directly. The local Neolink bridge must be running."
+                    : brand === "unifi" || brand === "generic"
+                      ? "Copy the RTSP URL from your camera/NVR and paste it below."
+                      : "SecurityOS will generate the common main-stream URL. Test it before saving."}
+                </p>
+                {!["generic", "unifi"].includes(brand) && (
+                  <button
+                    type="button"
+                    onClick={applyBrandPreset}
+                    className="shrink-0 rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+                  >
+                    Build URL
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="Name" required>
               <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Front Door" className={inputCls} />
             </Field>
-            <Field label="Location">
+            <Field
+              label="Location"
+              hint={
+                camera ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleSuggestLocation()}
+                    disabled={suggesting}
+                    title="Look at the camera feed and guess the room"
+                    className="text-[11px] font-medium text-accent hover:brightness-110 disabled:opacity-40"
+                  >
+                    {suggesting ? "Looking…" : "Auto-detect"}
+                  </button>
+                ) : undefined
+              }
+            >
               <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Main entrance" className={inputCls} />
+              {suggestNote && <span className="text-[11px] text-zinc-500">{suggestNote}</span>}
             </Field>
           </div>
 
@@ -168,12 +277,25 @@ export function CameraForm({ camera, onSaved, onClose }: Props) {
 const inputCls =
   "w-full rounded-lg border border-edge bg-panel-2 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none";
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({
+  label,
+  required,
+  hint,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-medium text-zinc-400">
-        {label}
-        {required && <span className="text-accent"> *</span>}
+      <span className="flex items-center justify-between text-xs font-medium text-zinc-400">
+        <span>
+          {label}
+          {required && <span className="text-accent"> *</span>}
+        </span>
+        {hint}
       </span>
       {children}
     </label>

@@ -45,14 +45,28 @@ export function EventCard({ event, onClick }: { event: SecurityEvent; onClick: (
           )}
         </div>
         <div className="text-sm text-zinc-400">
-          {eventTypeLabel(event.type)} detected
+          {event.persons.length > 0
+            ? event.persons.map((p) => p.name).join(", ")
+            : eventTypeLabel(event.type)}{" "}
+          detected
           {active ? (
             <span className="text-red-400"> — happening now</span>
           ) : (
             <> · stayed {formatDuration(event.durationS)}</>
           )}
         </div>
-        <div className="text-xs text-zinc-500">Confidence {formatConfidence(event.confidence)}</div>
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <span>Confidence {formatConfidence(event.confidence)}</span>
+          {event.persons.map((p) => (
+            <span
+              key={p.id}
+              className="rounded-md border border-edge bg-panel-2 px-1.5 py-px text-[10px] tabular-nums"
+              title={`${p.name}: ${p.visitCount} total sightings, ${p.visitsLast7d} in the last 7 days`}
+            >
+              {p.name} · {p.visitsLast7d}× this week
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="flex items-center pr-2 text-zinc-600 transition-colors group-hover:text-accent">

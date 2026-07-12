@@ -16,9 +16,14 @@ else
   echo "  backend  -> already running"
 fi
 
-# 2. Detection worker
+# 2. Detection worker (stable defaults for CPU — don't set FPS above 20)
 if ! lsof -ti :8001 >/dev/null 2>&1; then
-  (cd "$ROOT/worker" && nohup .venv/bin/python -m worker.main > "$LOGS/worker.log" 2>&1 &)
+  (cd "$ROOT/worker" && \
+    SECURITYOS_PIPELINE_FPS=12 \
+    SECURITYOS_DETECT_EVERY=2 \
+    SECURITYOS_PREVIEW_WIDTH=1280 \
+    SECURITYOS_INFERENCE_WIDTH=960 \
+    nohup .venv/bin/python -m worker.main > "$LOGS/worker.log" 2>&1 &)
   echo "  worker   -> http://127.0.0.1:8001 (log: data/logs/worker.log)"
 else
   echo "  worker   -> already running"

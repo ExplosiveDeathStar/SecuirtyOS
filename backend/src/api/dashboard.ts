@@ -11,8 +11,9 @@ import type { CameraHealth } from "../types.js";
 
 export const dashboardRouter = Router();
 
-dashboardRouter.get("/", async (_req, res) => {
-  const cameras = cameraService.list();
+dashboardRouter.get("/", async (req, res) => {
+  const siteId = req.user!.siteId;
+  const cameras = cameraService.list(siteId);
   const [health, workerAlive] = await Promise.all([workerClient.health(), workerClient.isAlive()]);
 
   const fallback = (enabled: boolean): CameraHealth => ({
@@ -25,13 +26,13 @@ dashboardRouter.get("/", async (_req, res) => {
 
   res.json({
     workerAlive,
-    stats: eventService.stats(),
+    stats: eventService.stats(siteId),
     cameras: cameras.map((camera) => ({
       ...camera,
       health: health[camera.id] ?? fallback(camera.enabled),
     })),
-    activeEvents: eventService.list({ status: "active", limit: 20 }),
-    recentEvents: eventService.list({ status: "completed", limit: 10 }),
+    activeEvents: eventService.list({ siteId, status: "active", limit: 20 }),
+    recentEvents: eventService.list({ siteId, status: "completed", limit: 10 }),
   });
 });
 

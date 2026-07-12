@@ -7,10 +7,12 @@ import { eventService } from "../services/eventService.js";
 export const eventsRouter = Router();
 
 eventsRouter.get("/", (req, res) => {
-  const { cameraId, type, status, from, to, limit, offset } = req.query;
+  const { cameraId, personId, type, status, from, to, limit, offset } = req.query;
   res.json(
     eventService.list({
+      siteId: req.user!.siteId,
       cameraId: typeof cameraId === "string" ? cameraId : undefined,
+      personId: typeof personId === "string" ? personId : undefined,
       type: typeof type === "string" ? type : undefined,
       status: status === "active" || status === "completed" ? status : undefined,
       from: typeof from === "string" ? from : undefined,
@@ -22,7 +24,7 @@ eventsRouter.get("/", (req, res) => {
 });
 
 eventsRouter.get("/:id", (req, res) => {
-  const event = eventService.get(req.params.id);
+  const event = eventService.get(req.params.id, req.user!.siteId);
   if (!event) {
     res.status(404).json({ error: "Event not found" });
     return;

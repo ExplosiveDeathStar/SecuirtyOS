@@ -1,0 +1,11 @@
+# Copy to neolink.toml and fill in your camera password.
+# Serves rtsp://127.0.0.1:8554/<camera-name>/sub
+
+bind = "127.0.0.1"
+bind_port = 8554
+
+[[cameras]]
+name = "deathbringer"
+username = "admin"
+password = "YOUR_CAMERA_PASSWORD"
+address = "10.201.41.40:9000"

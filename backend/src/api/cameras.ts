@@ -14,12 +14,13 @@ const cameraSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   enabled: z.boolean().optional(),
+  sensitivity: z.enum(["low", "medium", "high"]).optional(),
 });
 
 export const camerasRouter = Router();
 
-camerasRouter.get("/", (_req, res) => {
-  res.json(cameraService.list());
+camerasRouter.get("/", (req, res) => {
+  res.json(cameraService.list(req.user!.siteId));
 });
 
 camerasRouter.post("/", async (req, res) => {
@@ -28,13 +29,13 @@ camerasRouter.post("/", async (req, res) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
     return;
   }
-  const camera = cameraService.create(parsed.data);
+  const camera = cameraService.create(req.user!.siteId, parsed.data);
   await workerClient.notifyCamerasChanged();
   res.status(201).json(camera);
 });
 
 camerasRouter.get("/:id", (req, res) => {
-  const camera = cameraService.get(req.params.id);
+  const camera = cameraService.get(req.params.id, req.user!.siteId);
   if (!camera) {
     res.status(404).json({ error: "Camera not found" });
     return;
@@ -48,7 +49,7 @@ camerasRouter.put("/:id", async (req, res) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
     return;
   }
-  const camera = cameraService.update(req.params.id, parsed.data);
+  const camera = cameraService.update(req.params.id, req.user!.siteId, parsed.data);
   if (!camera) {
     res.status(404).json({ error: "Camera not found" });
     return;
@@ -58,7 +59,7 @@ camerasRouter.put("/:id", async (req, res) => {
 });
 
 camerasRouter.delete("/:id", async (req, res) => {
-  const deleted = cameraService.delete(req.params.id);
+  const deleted = cameraService.delete(req.params.id, req.user!.siteId);
   if (!deleted) {
     res.status(404).json({ error: "Camera not found" });
     return;
@@ -81,7 +82,7 @@ camerasRouter.post("/test", async (req, res) => {
 });
 
 camerasRouter.post("/:id/test", async (req, res) => {
-  const camera = cameraService.listWithSecrets().find((c) => c.id === req.params.id);
+  const camera = cameraService.listWithSecrets(req.user!.siteId).find((c) => c.id === req.params.id);
   if (!camera) {
     res.status(404).json({ error: "Camera not found" });
     return;
@@ -93,6 +94,15 @@ camerasRouter.post("/:id/test", async (req, res) => {
       password: camera.password,
     }),
   );
+});
+
+/** Ask the AI what room/area this camera appears to be watching. */
+camerasRouter.post("/:id/suggest-location", async (req, res) => {
+  if (!cameraService.get(req.params.id, req.user!.siteId)) {
+    res.status(404).json({ error: "Camera not found" });
+    return;
+  }
+  res.json(await workerClient.suggestLocation(req.params.id));
 });
 
 /** Live preview: proxy the worker's MJPEG stream so the browser only ever talks to this API. */

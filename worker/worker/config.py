@@ -25,11 +25,21 @@ DETECT_TYPES = tuple(
 )
 
 # Frames per second the pipeline processes per camera (capture may be faster;
-# we always grab the latest frame and drop the rest).
-PIPELINE_FPS = float(os.environ.get("SECURITYOS_PIPELINE_FPS", "10"))
+# we always grab the latest frame and drop the rest). Capped to avoid CPU melt.
+_raw_pipeline_fps = float(os.environ.get("SECURITYOS_PIPELINE_FPS", "12"))
+PIPELINE_FPS = min(max(_raw_pipeline_fps, 1.0), 20.0)
+if _raw_pipeline_fps > PIPELINE_FPS:
+    import logging
+    logging.getLogger(__name__).warning(
+        "SECURITYOS_PIPELINE_FPS=%s is too high for CPU inference; using %s",
+        _raw_pipeline_fps, PIPELINE_FPS,
+    )
 
-# Run inference on every Nth pipeline frame (10 fps pipeline / 2 = 5 inferences/s).
-DETECT_EVERY_N_FRAMES = int(os.environ.get("SECURITYOS_DETECT_EVERY", "2"))
+# Run inference on every Nth pipeline frame (12 fps pipeline / 2 = 6 inferences/s).
+DETECT_EVERY_N_FRAMES = max(int(os.environ.get("SECURITYOS_DETECT_EVERY", "2")), 1)
+
+# Downscale frames before YOLO so main-stream RTSP (2K+) stays usable on CPU.
+INFERENCE_MAX_WIDTH = int(os.environ.get("SECURITYOS_INFERENCE_WIDTH", "960"))
 
 # Seconds without a person before an event is considered over.
 EVENT_LINGER_SECONDS = float(os.environ.get("SECURITYOS_EVENT_LINGER", "5"))

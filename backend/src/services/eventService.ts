@@ -8,6 +8,7 @@
 import crypto from "node:crypto";
 import { getDb } from "../db/index.js";
 import type { EventStatus, EventType, SecurityEvent } from "../types.js";
+import { personService } from "./personService.js";
 
 interface EventRow {
   id: string;
@@ -45,11 +46,25 @@ function toEvent(row: EventRow): SecurityEvent {
     snapshotUrl: row.snapshot_path ? `/media/${row.snapshot_path}` : null,
     clipUrl: row.clip_path ? `/media/${row.clip_path}` : null,
     metadata: JSON.parse(row.metadata || "{}"),
+    persons: [],
   };
 }
 
+/** Attach recognized persons (with their sighting counts) to events. */
+function enrich(rows: EventRow[]): SecurityEvent[] {
+  const events = rows.map(toEvent);
+  const personsByEvent = personService.personsForEvents(events.map((e) => e.id));
+  for (const event of events) {
+    event.persons = personsByEvent.get(event.id) ?? [];
+  }
+  return events;
+}
+
 export interface EventQuery {
+  siteId?: string;
   cameraId?: string;
+  /** Only events this person was sighted in. */
+  personId?: string;
   type?: string;
   status?: EventStatus;
   /** ISO date bounds on started_at. */
@@ -63,7 +78,12 @@ export const eventService = {
   list(query: EventQuery = {}): SecurityEvent[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
+    if (query.siteId) { clauses.push("c.site_id = ?"); params.push(query.siteId); }
     if (query.cameraId) { clauses.push("e.camera_id = ?"); params.push(query.cameraId); }
+    if (query.personId) {
+      clauses.push("e.id IN (SELECT event_id FROM event_persons WHERE person_id = ?)");
+      params.push(query.personId);
+    }
     if (query.type) { clauses.push("e.type = ?"); params.push(query.type); }
     if (query.status) { clauses.push("e.status = ?"); params.push(query.status); }
     if (query.from) { clauses.push("e.started_at >= ?"); params.push(query.from); }
@@ -73,12 +93,14 @@ export const eventService = {
     const rows = getDb()
       .prepare(`${SELECT} ${where} ORDER BY e.started_at DESC LIMIT ? OFFSET ?`)
       .all(...params, query.limit ?? 100, query.offset ?? 0) as EventRow[];
-    return rows.map(toEvent);
+    return enrich(rows);
   },
 
-  get(id: string): SecurityEvent | null {
-    const row = getDb().prepare(`${SELECT} WHERE e.id = ?`).get(id) as EventRow | undefined;
-    return row ? toEvent(row) : null;
+  get(id: string, siteId?: string): SecurityEvent | null {
+    const row = getDb()
+      .prepare(`${SELECT} WHERE e.id = ?${siteId ? " AND c.site_id = ?" : ""}`)
+      .get(...(siteId ? [id, siteId] : [id])) as EventRow | undefined;
+    return row ? (enrich([row])[0] ?? null) : null;
   },
 
   /** Open a new active event (called by the worker when a detection starts). */
@@ -138,15 +160,27 @@ export const eventService = {
   },
 
   /** Aggregate stats for the dashboard. */
-  stats(): { today: number; activeNow: number; total: number } {
+  stats(siteId: string): { today: number; activeNow: number; total: number } {
     const db = getDb();
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const today = (db
-      .prepare(`SELECT COUNT(*) AS n FROM events WHERE started_at >= ?`)
-      .get(startOfDay.toISOString()) as { n: number }).n;
-    const activeNow = (db.prepare(`SELECT COUNT(*) AS n FROM events WHERE status = 'active'`).get() as { n: number }).n;
-    const total = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+      .prepare(
+        `SELECT COUNT(*) AS n FROM events e JOIN cameras c ON c.id = e.camera_id
+         WHERE c.site_id = ? AND e.started_at >= ?`,
+      )
+      .get(siteId, startOfDay.toISOString()) as { n: number }).n;
+    const activeNow = (db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM events e JOIN cameras c ON c.id = e.camera_id
+         WHERE c.site_id = ? AND e.status = 'active'`,
+      )
+      .get(siteId) as { n: number }).n;
+    const total = (db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM events e JOIN cameras c ON c.id = e.camera_id WHERE c.site_id = ?`,
+      )
+      .get(siteId) as { n: number }).n;
     return { today, activeNow, total };
   },
 };

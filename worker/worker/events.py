@@ -40,6 +40,8 @@ class _ActiveEvent:
     peak_confidence: float
     clip: ClipWriter
     last_reported_confidence: float = field(default=0.0)
+    # Persons already attached to this event (avoid duplicate reports).
+    reported_person_ids: set[str] = field(default_factory=set)
 
 
 class EventTracker:
@@ -55,12 +57,14 @@ class EventTracker:
     def has_active_event(self) -> bool:
         return bool(self._active)
 
-    def process(self, frame: np.ndarray, detections: list[Detection] | None) -> None:
+    def process(self, frame: np.ndarray, detections: list[Detection] | None,
+                person_ids: list[str] | None = None) -> None:
         """Feed one pipeline frame.
 
         `detections` is None when inference was skipped this frame (frame is
         still appended to any open clips); otherwise it is the full detection
-        list, possibly empty.
+        list, possibly empty. `person_ids` carries face identities recognized
+        in this frame (None when face ID did not run).
         """
         now = time.time()
 
@@ -86,6 +90,16 @@ class EventTracker:
                         if best - active.last_reported_confidence >= 0.05:
                             backend_client.update_event(active.event_id, confidence=best)
                             active.last_reported_confidence = best
+
+        # Attach recognized faces to the open person event.
+        if person_ids:
+            person_event = self._active.get("person")
+            if person_event is not None:
+                new_ids = [p for p in person_ids
+                           if p not in person_event.reported_person_ids]
+                if new_ids:
+                    backend_client.add_event_persons(person_event.event_id, new_ids)
+                    person_event.reported_person_ids.update(new_ids)
 
         # Close events whose subject left, or that hit the max duration.
         for event_type in list(self._active):

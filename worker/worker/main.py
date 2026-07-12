@@ -69,6 +69,21 @@ async def test(body: TestRequest) -> dict:
     )
 
 
+@app.get("/suggest-location/{camera_id}")
+async def suggest_location(camera_id: str) -> dict:
+    """Guess the camera's location from what it currently sees."""
+    pipeline = manager.get_pipeline(camera_id)
+    data = pipeline.stream.latest_frame() if pipeline else None
+    if pipeline is None or data is None:
+        return {"location": None, "message": "Camera is not streaming"}
+    location = await anyio.to_thread.run_sync(pipeline._suggest_room, data.frame)
+    return {
+        "location": location,
+        "message": f"Looks like: {location}" if location
+                   else "No recognizable room objects in view",
+    }
+
+
 def _mjpeg_generator(camera_id: str):
     """Yield the camera's latest frames as an MJPEG stream, with detection overlays."""
     last_seq = -1

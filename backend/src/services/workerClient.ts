@@ -71,6 +71,16 @@ export const workerClient = {
     }
   },
 
+  /** Ask the worker to guess a camera's location from what it sees. */
+  async suggestLocation(cameraId: string): Promise<{ location: string | null; message: string }> {
+    try {
+      const res = await workerFetch(`/suggest-location/${cameraId}`);
+      return (await res.json()) as { location: string | null; message: string };
+    } catch {
+      return { location: null, message: "Detection worker is not running" };
+    }
+  },
+
   /** URL of the worker's MJPEG preview for a camera (proxied by the API layer). */
   previewUrl(cameraId: string): string {
     return `${config.workerUrl}/preview/${cameraId}`;

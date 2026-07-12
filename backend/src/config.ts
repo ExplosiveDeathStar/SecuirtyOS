@@ -5,6 +5,7 @@
  * at the repository root so the database, media, and secrets live side by side
  * and never leave the machine.
  */
+import "dotenv/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,19 @@ export const config = {
   /** Base URL of the Python detection worker. */
   workerUrl: process.env.SECURITYOS_WORKER_URL ?? "http://127.0.0.1:8001",
 
+  /** Public HTTPS origin used for Stripe Checkout/Portal redirects. */
+  appUrl: process.env.SECURITYOS_APP_URL ?? "http://127.0.0.1:3000",
+
+  /** Commercial billing. Keep secrets in backend/.env, never in source. */
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  stripeMonthlyPriceId: process.env.STRIPE_PRICE_MONTHLY_ID ?? "",
+  stripeYearlyPriceId: process.env.STRIPE_PRICE_YEARLY_ID ?? "",
+
+  /** Hybrid cloud account plane (video and inference remain local). */
+  supabaseUrl: process.env.SUPABASE_URL ?? "",
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+
   /** Local data directory (database, media, encryption key). */
   dataDir: process.env.SECURITYOS_DATA_DIR ?? path.join(REPO_ROOT, "data"),
 
@@ -36,6 +50,9 @@ export const config = {
   },
   get clipsDir() {
     return path.join(this.mediaDir, "clips");
+  },
+  get facesDir() {
+    return path.join(this.mediaDir, "faces");
   },
   get secretKeyPath() {
     return path.join(this.dataDir, "secret.key");

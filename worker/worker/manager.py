@@ -16,6 +16,7 @@ from .backend_client import BackendState, CameraConfig
 from .capture import CameraStream, build_stream_url
 from .detectors import Detector, YoloDetector
 from .events import EventTracker
+from .faces import FaceIdentifier
 from .pipeline import CameraPipeline
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class StreamManager:
         self._configs: dict[str, CameraConfig] = {}
         self._state: BackendState | None = None
         self._detectors: list[Detector] | None = None
+        self._face_identifiers: dict[str, FaceIdentifier] = {}
         self._lock = threading.Lock()
 
     # -- lifecycle -----------------------------------------------------------
@@ -76,7 +78,11 @@ class StreamManager:
                 stream = CameraStream(camera_id, url)
                 tracker = EventTracker(camera_id, state.storage.snapshots_dir,
                                        state.storage.clips_dir)
-                pipeline = CameraPipeline(camera_id, stream, self._get_detectors(), tracker)
+                face_identifier = self._face_identifiers.setdefault(
+                    cam.site_id, FaceIdentifier(state.storage.faces_dir, cam.site_id)
+                )
+                pipeline = CameraPipeline(camera_id, stream, self._get_detectors(),
+                                          tracker, face_identifier)
                 stream.start()
                 pipeline.start()
                 self._pipelines[camera_id] = pipeline

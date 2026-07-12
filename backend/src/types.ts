@@ -2,9 +2,31 @@
  * Shared domain types for the SecurityOS backend.
  */
 
+/**
+ * How important a camera's location is. "high" = close to home
+ * (front door, backyard); "low" = far/public (street view).
+ */
+export type CameraSensitivity = "low" | "medium" | "high";
+
+export type SubscriptionPlan = "monthly" | "yearly";
+export type UserRole = "owner" | "admin" | "customer";
+export type BillingStatus = "incomplete" | "active" | "past_due" | "canceled";
+
+export interface User {
+  id: string;
+  email: string;
+  siteId: string;
+  plan: SubscriptionPlan;
+  role: UserRole;
+  billingStatus: BillingStatus;
+  currentPeriodEnd: string | null;
+  createdAt: string;
+}
+
 /** A configured camera. `password` is never stored or returned in plaintext via the public API. */
 export interface Camera {
   id: string;
+  siteId: string;
   name: string;
   location: string;
   rtspUrl: string;
@@ -12,6 +34,7 @@ export interface Camera {
   /** Whether a password is set (plaintext never exposed publicly). */
   hasPassword: boolean;
   enabled: boolean;
+  sensitivity: CameraSensitivity;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +56,34 @@ export type EventType =
 
 export type EventStatus = "active" | "completed";
 
+/** A person identified by face recognition, with objective sighting stats. */
+export interface Person {
+  id: string;
+  name: string;
+  safe: boolean;
+  /** True once the user has renamed them (no longer "Person N"). */
+  labeled: boolean;
+  faceUrl: string | null;
+  /** All captured face photos (the thumbnail is picked from these). */
+  faceUrls: string[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  visitCount: number;
+  visitsLast7d: number;
+  visitsToday: number;
+}
+
+/** Minimal person info embedded in events, with sighting frequency. */
+export interface EventPerson {
+  id: string;
+  name: string;
+  safe: boolean;
+  labeled: boolean;
+  faceUrl: string | null;
+  visitCount: number;
+  visitsLast7d: number;
+}
+
 /** A detection event on the timeline. */
 export interface SecurityEvent {
   id: string;
@@ -48,6 +99,8 @@ export interface SecurityEvent {
   snapshotUrl: string | null;
   clipUrl: string | null;
   metadata: Record<string, unknown>;
+  /** Persons recognized during this event (person events only). */
+  persons: EventPerson[];
 }
 
 /** Per-camera runtime health, as reported by the detection worker. */

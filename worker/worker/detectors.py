@@ -17,6 +17,7 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
 
 from . import config
@@ -30,6 +31,26 @@ COCO_CLASS_GROUPS: dict[str, set[int]] = {
     "vehicle": {1, 2, 3, 5, 7},
     # bird, cat, dog, horse, sheep, cow, elephant, bear, zebra, giraffe
     "animal": {14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+}
+
+# COCO objects that reveal what room/area a camera is watching.
+# Used to auto-suggest the camera's location label.
+ROOM_HINTS: dict[int, tuple[str, float]] = {
+    72: ("Kitchen", 1.0),        # refrigerator
+    69: ("Kitchen", 1.0),        # oven
+    68: ("Kitchen", 0.9),        # microwave
+    70: ("Kitchen", 0.8),        # toaster
+    71: ("Kitchen", 0.6),        # sink (also bathrooms)
+    59: ("Bedroom", 1.0),        # bed
+    61: ("Bathroom", 1.0),       # toilet
+    57: ("Living Room", 0.9),    # couch
+    62: ("Living Room", 0.5),    # tv
+    60: ("Dining Area", 0.8),    # dining table
+    63: ("Office", 0.7),         # laptop
+    66: ("Office", 0.5),         # keyboard
+    2:  ("Driveway", 0.9),       # car
+    7:  ("Driveway", 0.8),       # truck
+    1:  ("Garage", 0.5),         # bicycle
 }
 
 # Overlay/snapshot colors per event type (BGR).
@@ -88,15 +109,51 @@ class YoloDetector(Detector):
         self._lock = threading.Lock()
         log.info("YOLO model ready")
 
-    def detect(self, frame: np.ndarray) -> list[Detection]:
+    def suggest_room(self, frame: np.ndarray) -> str | None:
+        """Guess the room/area this camera watches from visible objects
+        (fridge -> Kitchen, bed -> Bedroom, car -> Driveway, ...)."""
+        infer_frame = frame
+        if frame.shape[1] > config.INFERENCE_MAX_WIDTH:
+            scale = config.INFERENCE_MAX_WIDTH / frame.shape[1]
+            infer_frame = cv2.resize(
+                frame, (config.INFERENCE_MAX_WIDTH, int(frame.shape[0] * scale)))
+
         with self._lock:
             results = self._model.predict(
+                infer_frame, classes=sorted(ROOM_HINTS), conf=0.35, verbose=False,
+            )
+        votes: dict[str, float] = {}
+        for result in results:
+            if result.boxes is None:
+                continue
+            for box in result.boxes:
+                hint = ROOM_HINTS.get(int(box.cls[0]))
+                if hint:
+                    room, weight = hint
+                    votes[room] = votes.get(room, 0.0) + weight * float(box.conf[0])
+        if not votes:
+            return None
+        return max(votes, key=lambda room: votes[room])
+
+    def detect(self, frame: np.ndarray) -> list[Detection]:
+        infer_frame = frame
+        scale = 1.0
+        if frame.shape[1] > config.INFERENCE_MAX_WIDTH:
+            scale = config.INFERENCE_MAX_WIDTH / frame.shape[1]
+            infer_frame = cv2.resize(
                 frame,
+                (config.INFERENCE_MAX_WIDTH, int(frame.shape[0] * scale)),
+            )
+
+        with self._lock:
+            results = self._model.predict(
+                infer_frame,
                 classes=sorted(self._class_to_type),
                 conf=config.CONFIDENCE_THRESHOLD,
                 verbose=False,
             )
         detections: list[Detection] = []
+        inv_scale = 1.0 / scale
         for result in results:
             if result.boxes is None:
                 continue
@@ -105,7 +162,7 @@ class YoloDetector(Detector):
                 event_type = self._class_to_type.get(class_id)
                 if event_type is None:
                     continue
-                x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].tolist())
+                x1, y1, x2, y2 = (int(v * inv_scale) for v in box.xyxy[0].tolist())
                 detections.append(
                     Detection(
                         event_type=event_type,
